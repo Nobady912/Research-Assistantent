@@ -1,0 +1,218 @@
+---
+title: "Markdown Tie Project"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+#just for code practice and play around it
+################################################################################
+
+#clean the enviroment
+
+```{r}
+rm(list = ls())
+```
+
+
+#set the working direction
+#setwd("/Users/tie/Documents/GitHub/RA-data-cleaning-work/Code practice")
+
+#create a new file for the data 
+#dir.create("/Users/tie/Documents/GitHub/RA-data-cleaning-work/Code practice", recursive = TRUE)
+
+
+################################################################################
+#Step one Lode the all package that necessary. 
+#some of them may not be used this file
+#I just copy them around, so it will make my life easier 
+```{r}
+library (lubridate)     #the time series processing package
+library (cansim)        #provides easy access to the statistics canada data tale
+library (WDI)           #Accesses data from the world development indicators
+library (fredr)         #provide an interface to the federal reserve economic data API
+library (tsbox)         #Make time series conversion, aggregation and plotting simple
+library (RColorBrewer)  #color palettes for R graphics
+library(wesanderson)    #Provides color palettes inspired by Wes Anderson films.
+library(writexl)        #Writes data frames to Excel files.
+library(tidyr)          #Tidies messy data   
+library(xts)            #Extensible time series class for R   
+library(dplyr)          #Data manipulation and transformation.
+library(openxlsx)       #Read, write, and edit Excel files.
+library(knitr)
+library(testthat)
+install.packages("ggplot2")
+library(ggplot2)
+
+#Note: OECD change their API tool make the default download OECD package will not work
+#so I have to download from github
+
+#For whoever read this after 2024/05/18 please check the the default download OECD package
+#support the OECD new API or not
+
+
+library(devtools)
+install_github("expersso/OECD")
+
+library(OECD)
+#load the function
+#source("C:\Users\Ezra\Desktop\Tei R code")
+```
+
+################################################################################
+#API
+################################################################################
+
+```{r}
+dataset <- "OECD.SDD.NAD,DSD_NAMAIN10@DF_TABLE1,1.0"
+
+filter <- "A.AUT+BEL+CAN+CHL+COL+CRI+DNK+CZE+EST+FIN+FRA+DEU+GRC+ISL+HUN+ISR+IRL+JPN+KOR+ITA+USA+GBR+TUR+CHE+ESP+SVN+SWE+SVK+MEX+LVA+LTU+LUX+NLD+NZL+NOR+POL+PRT+ZMB+ZAF+SGP+SRB+SEN+RUS+SAU+MKD+ROU+MAR+MLT+IDN+MDG+HKG+IND+GEO+CYP+HRV+CHN+CMR+CPV+BGR+ARG+WXOECD+ALB+BRA+EU15+EA20+OECDE+OECD26+EU27_2020+OECD+AUS.S1..B1GQ....USD_PPP.LR+V..T0102"
+
+raw_data <- get_dataset(dataset, filter)
+```
+
+################################################################################
+
+```{r}
+#check the data
+unique_values <- raw_data %>% 
+  summarise_all(~ list(unique(.)))
+
+#create a new data frame for all useful data col
+selection_data <- select(raw_data, TIME_PERIOD, UNIT_MEASURE, REF_AREA, ObsValue, PRICE_BASE)
+
+# Convert observations from character to numeric
+selection_data$ObsValue <- as.numeric(selection_data$ObsValue)
+
+# Ensure TIME_PERIOD is numeric in the selection_data
+selection_data$TIME_PERIOD <- as.numeric(selection_data$TIME_PERIOD)
+
+# Define a complete range of years and countries
+all_countries <- unique(selection_data$REF_AREA)
+
+#create the sequence for from the smallest year to the largest year
+all_years <- seq(min(selection_data$TIME_PERIOD, na.rm = TRUE), max(selection_data$TIME_PERIOD, na.rm = TRUE), by = 1)
+
+# Create a full grid of TIME_PERIOD, REF_AREA, MEASURE, and UNIT_MEASURE
+# Assuming all_years and all_countries are defined and unique
+#all_years <- c(2021, 2022)  # Example values
+#all_countries <- c("USA", "CAN")  # Example values
+
+# Create full grid
+full_grid <- expand.grid(
+  TIME_PERIOD = all_years,
+  REF_AREA = all_countries,
+  PRICE_BASE = unique(selection_data$PRICE_BASE),
+  UNIT_MEASURE = unique(selection_data$UNIT_MEASURE)
+)
+
+# Perform the left join
+selection_data <- full_grid %>%
+  left_join(selection_data, by = c("TIME_PERIOD", "UNIT_MEASURE", "REF_AREA", "PRICE_BASE"))
+
+# Print the resulting data frame to verify the join
+print(selection_data)
+
+#pivot_wide the data 
+wide_data <- selection_data %>%
+  pivot_wider(
+    names_from = c(PRICE_BASE),
+    values_from = ObsValue,
+    names_sep = "_"
+  )
+```
+
+```{r}
+
+# Count the number of years for each country with non-NA values for both L and LR
+years_count <- wide_data %>%
+  filter(!is.na(V) & !is.na(LR)) %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD))
+
+
+```
+
+
+# Filter countries with at least 25 years of data
+
+```{r}
+
+countries_to_keep <- years_count %>%
+  filter(years_of_data >= 25) %>%
+  pull(REF_AREA)
+
+```
+
+
+
+
+# Filter the original test_data to keep only the selected countries
+
+```{r}
+wide_data %>%
+  filter(REF_AREA %in% countries_to_keep)
+```
+
+```{r}
+
+filtered_data <- wide_data %>%
+  filter(REF_AREA %in% countries_to_keep)
+
+```
+
+
+# Check if every country has data for the entire time period from 1950 to 2023
+
+```{r}
+coverage_check <- filtered_data %>%
+  group_by(REF_AREA) %>%
+  summarize(complete_years = all(1950:2023 %in% TIME_PERIOD), .groups = 'drop')
+```
+
+
+# Print the coverage check
+```{r}
+print(coverage_check, n = 100)
+```
+
+
+```{r}
+# Rename variables to match
+filtered_data <- rename(filtered_data, nominal_GDP = V)
+filtered_data <- rename(filtered_data, real_GDP = LR)
+
+```
+
+```{r}
+
+# Calculate Price Levels (P_t)
+filtered_data <- filtered_data %>%
+  group_by(REF_AREA) %>%
+  mutate(Price_Level = nominal_GDP / real_GDP)
+
+# Calculate Inflation Rates (π_t)
+filtered_data <- filtered_data %>%
+  arrange(REF_AREA, TIME_PERIOD) %>%
+  mutate(Inflation_Rate = (Price_Level - lag(Price_Level)) / lag(Price_Level) * 100)
+
+# Print the resulting data frame
+print(filtered_data, n = 100)
+
+
+```
+
+```{r}
+# Make excel file
+
+write.xlsx(filtered_data, file = "C:/Users/Ezra/Desktop/Tei R code/raw_data.xlsx")
+
+```
+

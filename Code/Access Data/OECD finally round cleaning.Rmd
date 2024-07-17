@@ -1,0 +1,500 @@
+---
+title: "The excel process code"
+output: html_document
+date: "2024-05-25"
+---
+
+```{r setup, include=FALSE}
+#This is the file that doing the excel procession for marge the check list 
+#I do not if its work, but let's do it 
+#2024/05/25 note for all future reader, OECD update their kpi, so the code may not work. I have to downlode the github verson....
+#2024/07/01 update the code and improve the readability for future reader and myself.
+
+```
+
+
+```{r}
+
+################################################################################
+#Step one Lode the all package that necessary. 
+#some of them may not be used this file
+#I just copy them around, so it will make my life easier 
+library (lubridate)     #the time series processing package
+library (cansim)        #provides easy access to the statistics canada data tale
+library (WDI)           #Accesses data from the world development indicators
+library (fredr)         #provide an interface to the federal reserve economic data API
+library (tsbox)         #Make time series conversion, aggregation and plotting simple
+library (RColorBrewer)  #color palettes for R graphics
+library(wesanderson)    #Provides color palettes inspired by Wes Anderson films.
+library(writexl)        #Writes data frames to Excel files.
+library(tidyr)          #Tidies messy data   
+library(xts)            #Extensible time series class for R   
+library(dplyr)          #Data manipulation and transformation.
+library(openxlsx)       #Read, write, and edit Excel files.
+library(knitr)
+library(testthat)
+library(ggplot2)
+
+#Note: OECD change their API tool make the default download OECD package will not work
+#so I have to download from github
+
+#For whoever read this after 2024/05/18 please check the the default download OECD package
+#support the OECD new API or not (otherwise you will be in great pain of dtermine your code work or not)
+
+library(devtools)
+install_github("expersso/OECD")
+
+library(OECD)
+
+```
+
+
+
+```{r}
+
+################################################################################
+#API
+################################################################################
+
+rm(list = ls())
+
+
+#lode the Api
+#verson one: the flat
+#https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN10@DF_TABLE1,1.0/A.AUS+AUT+BEL+CAN+CHL+COL+CRI+CZE+DNK+EST+FIN+FRA+DEU+GRC+HUN+ISL+IRL+ISR+ITA+JPN+KOR+LVA+LTU+MEX+LUX+NLD+NZL+NOR+POL+PRT+SVK+SVN+ESP+SWE+CHE+TUR+EU15+EA20+GBR+USA+ARG+ALB+BRA+OECDE+OECD26+OECD+EU27_2020+BGR+CPV+CHN+CMR+HRV+CYP+GEO+HKG+IND+IDN+MDG+MLT+MAR+MKD+ROU+RUS+SAU+SEN+SRB+SGP+ZAF+ZMB.S1..B1GQ._Z._Z..USD_EXC+XDC+USD_PPP.L+V+VQ+LR..T0102?startPeriod=1950&endPeriod=2023&dimensionAtObservation=AllDimensions
+
+#verson two: time series
+# https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN10@DF_TABLE1,1.0/A.AUS+AUT+BEL+CAN+CHL+COL+CRI+CZE+DNK+EST+FIN+FRA+DEU+GRC+HUN+ISL+IRL+ISR+ITA+JPN+KOR+LVA+LTU+MEX+LUX+NLD+NZL+NOR+POL+PRT+SVK+SVN+ESP+SWE+CHE+TUR+EU15+EA20+GBR+USA+ARG+ALB+BRA+OECDE+OECD26+OECD+EU27_2020+BGR+CPV+CHN+CMR+HRV+CYP+GEO+HKG+IND+IDN+MDG+MLT+MAR+MKD+ROU+RUS+SAU+SEN+SRB+SGP+ZAF+ZMB.S1..B1GQ._Z._Z..USD_EXC+XDC+USD_PPP.L+V+VQ+LR..T0102?startPeriod=1950&endPeriod=2023
+
+
+
+dataset <- "OECD.SDD.NAD,DSD_NAMAIN10@DF_TABLE1,1.0"
+
+filter <- "A.AUT+BEL+CAN+CHL+COL+CRI+DNK+CZE+EST+FIN+FRA+DEU+GRC+ISL+HUN+ISR+IRL+JPN+KOR+ITA+USA+GBR+TUR+CHE+ESP+SVN+SWE+SVK+MEX+LVA+LTU+LUX+NLD+NZL+NOR+POL+PRT+ZMB+ZAF+SGP+SRB+SEN+RUS+SAU+MKD+ROU+MAR+MLT+IDN+MDG+HKG+IND+GEO+CYP+HRV+CHN+CMR+CPV+BGR+ARG+WXOECD+ALB+BRA+EU15+EA20+OECDE+OECD26+EU27_2020+OECD+AUS.S1..B1GQ....USD_PPP.LR+V..T0102"
+
+#filter <- "A.AUS+AUT+BEL+CAN+CHL+COL+CRI+CZE+DNK+EST+FIN+FRA+DEU+GRC+HUN+ISL+IRL+ISR+ITA+JPN+KOR+LVA+LTU+MEX+LUX+NLD+NZL+NOR+POL+PRT+SVK+SVN+ESP+SWE+CHE+TUR+EU15+EA20+GBR+USA+ARG+ALB+BRA+OECDE+OECD26+OECD+EU27_2020+BGR+CPV+CHN+CMR+HRV+CYP+GEO+HKG+IND+IDN+MDG+MLT+MAR+MKD+ROU+RUS+SAU+SEN+SRB+SGP+ZAF+ZMB.S1..B1GQ._Z._Z..USD_EXC+XDC+USD_PPP.L+V+VQ+LR..T0102"
+
+raw_data <- get_dataset(dataset, filter)
+#str(raw_data)
+
+n_unique_ref_area <- n_distinct(raw_data$REF_AREA)
+print(n_unique_ref_area)
+
+#dir.create("D:\\github\\RA-data-clening\\Data\\OECD", recursive = TRUE)
+
+#dasd 
+write.xlsx(raw_data, file = "D:\\github\\RA-data-clening\\Data\\OECD\\OECD_data_yearly_GDP_raw_data.xlsx")
+```
+
+
+
+
+```{r}
+#check the data
+unique_values <- raw_data %>% 
+  summarise_all(~ list(unique(.)))
+
+#create a new data frame for all useful data col
+selection_data <- select(raw_data, TIME_PERIOD, UNIT_MEASURE, REF_AREA, ObsValue, PRICE_BASE)
+
+# Convert observations from character to numeric
+selection_data$ObsValue <- as.numeric(selection_data$ObsValue)
+
+# Ensure TIME_PERIOD is numeric in the selection_data
+selection_data$TIME_PERIOD <- as.numeric(selection_data$TIME_PERIOD)
+
+# Define a complete range of years and countries
+all_countries <- unique(selection_data$REF_AREA)
+
+#create the sequence for from the smallest year to the largest year
+all_years <- seq(min(selection_data$TIME_PERIOD, na.rm = TRUE), max(selection_data$TIME_PERIOD, na.rm = TRUE), by = 1)
+
+# Create a full grid of TIME_PERIOD, REF_AREA, MEASURE, and UNIT_MEASURE
+# Assuming all_years and all_countries are defined and unique
+#all_years <- c(2021, 2022)  # Example values
+#all_countries <- c("USA", "CAN")  # Example values
+
+# Create full grid
+full_grid <- expand.grid(
+  TIME_PERIOD = all_years,
+  REF_AREA = all_countries,
+  PRICE_BASE = unique(selection_data$PRICE_BASE),
+  UNIT_MEASURE = unique(selection_data$UNIT_MEASURE)
+)
+
+# Perform the left join
+selection_data <- full_grid %>%
+  left_join(selection_data, by = c("TIME_PERIOD", "UNIT_MEASURE", "REF_AREA", "PRICE_BASE"))
+
+# Print the resulting data frame to verify the join
+print(selection_data)
+
+#pivot_wide the data 
+wide_data <- selection_data %>%
+  pivot_wider(
+    names_from = c(PRICE_BASE),
+    values_from = ObsValue,
+    names_sep = "_"
+  )
+```
+
+```{r}
+
+# Count the number of years for each country with non-NA values for both L and LR
+years_count <- wide_data %>%
+  filter(!is.na(V) & !is.na(LR)) %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD))
+
+
+```
+
+
+# Filter countries with at least 25 years of data
+
+```{r}
+
+countries_to_keep <- years_count %>%
+  filter(years_of_data >= 25) %>%
+  pull(REF_AREA)
+
+#country that be delete
+countries_to_delete <- years_count %>%
+  filter(years_of_data < 25) %>%
+  pull(REF_AREA)
+
+
+print(countries_to_delete)
+print(unique(wide_data$REF_AREA))
+
+#n_unique_ref_area <- n_distinct(wide_data$REF_AREA)
+#print(n_unique_ref_area)
+
+
+
+```
+
+
+
+
+# Filter the original test_data to keep only the selected countries
+
+```{r}
+wide_data %>%
+  filter(REF_AREA %in% countries_to_keep)
+```
+
+```{r}
+
+filtered_data <- wide_data %>%
+  filter(REF_AREA %in% countries_to_keep)
+
+```
+
+
+# Check if every country has data for the entire time period from 1950 to 2023
+
+```{r}
+coverage_check <- filtered_data %>%
+  group_by(REF_AREA) %>%
+  summarize(complete_years = all(1950:2023 %in% TIME_PERIOD), .groups = 'drop')
+```
+
+
+# Print the coverage check
+```{r}
+print(coverage_check, n = 100)
+```
+
+
+```{r}
+# Rename variables to match
+filtered_data <- rename(filtered_data, nominal_GDP = V)
+filtered_data <- rename(filtered_data, real_GDP = LR)
+
+```
+
+```{r}
+
+# Calculate Price Levels (P_t)
+filtered_data <- filtered_data %>%
+  group_by(REF_AREA) %>%
+  mutate(Price_Level = nominal_GDP / real_GDP)
+
+# Calculate Inflation Rates (π_t)
+filtered_data <- filtered_data %>%
+  arrange(REF_AREA, TIME_PERIOD) %>%
+  mutate(Inflation_Rate = (Price_Level - lag(Price_Level)) / lag(Price_Level) * 100)
+
+# Print the resulting data frame
+print(filtered_data, n = 100)
+
+
+```
+
+```{r}
+#double check the file
+head(filtered_data)
+
+```
+
+
+
+```{r}
+# Make excel file
+
+write.xlsx(filtered_data, file = "D:\\github\\RA-data-clening\\Data\\OECD\\OECD_data_yearly_GDP_data.xlsx")
+```
+
+```{r}
+
+#extract the data duration for each country
+data_duration <- raw_data %>%
+  group_by(REF_AREA) %>%
+  summarize(
+    start_year = min(TIME_PERIOD, na.rm = TRUE),
+    end_year = max(TIME_PERIOD, na.rm = TRUE),
+  ) %>%
+  mutate(data_duartion = paste(start_year, "-", end_year))
+
+data_duration$data_duration <- as.character(data_duration$data_duartion)
+
+
+
+#find the country that have at least 25 year olf 
+years_count <- wide_data %>%
+  filter(!is.na(V) & !is.na(LR)) %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD)) %>%
+  mutate(has_25_years = ifelse(years_of_data >= 25, "1", "0"))
+
+
+#market the country that have in the final data set 
+included_in_filtered <- filtered_data %>%
+  distinct(REF_AREA) %>%
+  mutate(in_filtered_data = 1)
+
+
+# put the everythign together 
+final_summary <- data_duration %>%
+  left_join(years_count, by = "REF_AREA") %>%
+  left_join(included_in_filtered, by = "REF_AREA") %>%
+  mutate(in_filtered_data = ifelse(is.na(in_filtered_data), 0, in_filtered_data))
+
+
+# 选择并排列所需的列
+final_summary <- final_summary %>%
+  select(
+    country_code = REF_AREA,
+    data_duration,
+    has_25_years,
+    in_filtered_data
+  )
+
+# its time for check
+print(final_summary)
+
+
+
+#change the time 
+#new name = the old name
+
+
+print(colnames(final_summary))
+
+final_summary <- final_summary %>%
+  rename(
+    country_code = country_code,       
+    data_duration = data_duration,     
+    has_25_years = has_25_years,      
+    In_OECD_data_set = in_filtered_data
+  )
+
+
+#check check time 
+print(final_summary)
+
+#set the copy
+write.xlsx(final_summary, file = "D:\\github\\RA-data-clening\\Data\\OECD\\OECD_data_summary_raW.xlsx")
+
+
+```
+
+
+
+```{r}
+
+#print the entire country list so I can add an other col
+print(final_summary$country_code)
+
+
+#all the countries name
+country_names <- data.frame(
+  country_code = c("ALB", "ARG", "AUS", "AUT", "BEL", "BGR", "BRA", "CAN", "CHE", "CHL", "CHN", "CMR", "COL", "CPV", "CRI", "CYP", "CZE", "DEU", "DNK", "EA20", "ESP", "EST", "EU15", "EU27_2020", "FIN", "FRA", "GBR", "GEO", "GRC", "HKG", "HRV", "HUN", "IDN", "IND", "IRL", "ISL", "ISR", "ITA", "JPN", "KOR", "LTU", "LUX", "LVA", "MAR", "MDG", "MEX", "MKD", "MLT", "NLD", "NOR", "NZL", "OECD", "OECD26", "OECDE", "POL", "PRT", "ROU", "RUS", "SAU", "SEN", "SGP", "SRB", "SVK", "SVN", "SWE", "TUR", "USA", "ZAF", "ZMB"),
+  country_name = c("Albania", "Argentina", "Australia", "Austria", "Belgium", "Bulgaria", "Brazil", "Canada", "Switzerland", "Chile", "China", "Cameroon", "Colombia", "Cape Verde", "Costa Rica", "Cyprus", "Czech Republic", "Germany", "Denmark", "Euro area", "Spain", "Estonia", "European Union 15", "European Union 27 (2020)", "Finland", "France", "United Kingdom", "Georgia", "Greece", "Hong Kong", "Croatia", "Hungary", "Indonesia", "India", "Ireland", "Iceland", "Israel", "Italy", "Japan", "Korea", "Lithuania", "Luxembourg", "Latvia", "Morocco", "Madagascar", "Mexico", "North Macedonia", "Malta", "Netherlands", "Norway", "New Zealand", "OECD - Total", "OECD - 26", "OECD Europe", "Poland", "Portugal", "Romania", "Russia", "Saudi Arabia", "Senegal", "Singapore", "Serbia", "Slovakia", "Slovenia", "Sweden", "Turkey", "United States", "South Africa", "Zambia")
+)
+
+
+#double check if two have the same order 
+final_summary <- final_summary %>%
+  arrange(country_code)
+
+country_names <- country_names %>%
+  arrange(country_code)
+
+
+
+#put the countries names and the countries list together
+final_summary <- final_summary %>%
+  left_join(country_names, by = "country_code")
+
+# reorganized it
+final_summary <- final_summary %>%
+  select(
+    country_name,
+    country_code,
+    data_duration,
+    has_25_years,
+    In_OECD_data_set
+  )
+
+print(final_summary)
+
+#save it so we will not lost 
+write.xlsx(final_summary, file = "D:\\github\\RA-data-clening\\Data\\OECD\\OECD_data_summary_with_names.xlsx")
+
+
+
+```
+
+
+
+```{r}
+# 读取更新后的 OECD ultra check list 数据框
+# the check list time!
+OECD_checklist <- read.xlsx("D:\\github\\RA-data-clening\\Data\\OECD\\the OECD ultra check list.xlsx")
+
+# 打印原始列名
+# print the check list
+print("Column names before renaming:")
+print(colnames(OECD_checklist))
+
+# 重命名列以方便合并
+# rename it so its better for mt life
+OECD_checklist <- OECD_checklist %>%
+  rename(
+    country_name = X1,
+    OECD = OECD,
+    When_join_OECD = When.join.OECD,
+    include_in_the_paper = include.in.the.paper
+  )
+
+# 检查数据框
+# check the data!
+print("OECD ultra checklist after renaming:")
+print(colnames(OECD_checklist))
+```
+
+
+
+```{r}
+
+# the paper's countries list 
+# note here, Zaire no longer excist, its call the congo now
+ountry_mapping <- data.frame(
+  country_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", 
+                   "Brazil", "Canada", "Chile", "Colombia", "Costa Rica", 
+                   "Czech Republic", "Denmark", "Dominican Republic", "Ecuador", "El Salvador", 
+                   "Estonia", "Finland", "France", "Germany", "Greece", 
+                   "Guatemala", "Hungary", "Iceland", "India", "Iran", 
+                   "Ireland", "Israel", "Italy", "Jamaica", "Japan", 
+                   "Kenya", "Latvia", "Lithuania", "Luxembourg", "Malaysia", 
+                   "Mexico", "Netherlands", "New Zealand", "Non - OECD", "Norway", 
+                   "OECD", "Pakistan", "Panama", "Paraguay", "Philippines", 
+                   "Poland", "Portugal", "Singapore", "Slovak Republic", "Slovenia", 
+                   "South Africa", "South Korea", "Spain", "Sweden", "Switzerland", 
+                   "Thailand", "Tunisia", "Turkey", "UK", "US", 
+                   "Venezuela", "Zaire"),
+  country_code = c("ARG", "AUS", "AUT", "BEL", "BOL", 
+                   "BRA", "CAN", "CHL", "COL", "CRI", 
+                   "CZE", "DNK", "DOM", "ECU", "SLV", 
+                   "EST", "FIN", "FRA", "DEU", "GRC", 
+                   "GTM", "HUN", "ISL", "IND", "IRN", 
+                   "IRL", "ISR", "ITA", "JAM", "JPN", 
+                   "KEN", "LVA", "LTU", "LUX", "MYS", 
+                   "MEX", "NLD", "NZL", "NON", "NOR", 
+                   "OECD", "PAK", "PAN", "PRY", "PHL", 
+                   "POL", "PRT", "SGP", "SVK", "SVN", 
+                   "ZAF", "KOR", "ESP", "SWE", "CHE", 
+                   "THA", "TUN", "TUR", "GBR", "USA", 
+                   "VEN", "ZAR")
+)
+
+#the left join time!!!!!
+#keep the data
+OECD_checklist <- OECD_checklist %>%
+  left_join(country_mapping, by = "country_name")
+
+#check the data!!!!
+print("OECD ultra checklist with country codes:")
+print(OECD_checklist)
+```
+
+
+
+
+```{r}
+
+# the check list time!
+OECD_checklist <- OECD_checklist %>%
+  rename(OECD_country_code = country_code)
+
+final_combined <- final_summary %>%
+  left_join(OECD_checklist, by = c("country_code" = "OECD_country_code"))
+
+
+
+print(final_combined)
+
+#replacea all the NA with 0
+#
+final_combined <- final_combined %>% mutate( 
+  OECD = replace_na(OECD, 0),
+  has_25_years = replace_na(has_25_years, 0),
+  In_OECD_data_set = replace_na(In_OECD_data_set, 0),
+  include_in_the_paper = replace_na(include_in_the_paper, 0))
+
+
+#Save before the final change 
+write.xlsx(final_combined, file = "D:\\github\\RA-data-clening\\Data\\OECD\\final_combined.xlsx")
+
+#the final change!
+OECD_yearly_data_check_list <- final_combined %>%
+  mutate(
+    OECD = ifelse(OECD == 1, "Yes", "No"),
+    has_25_years = ifelse(has_25_years == 1, "Yes", "No"),
+    In_OECD_data_set = ifelse(In_OECD_data_set == 1, "Yes", "No"),
+    include_in_the_paper = ifelse(include_in_the_paper == 1, "Yes", "No")
+  )
+
+# Save the final data frame
+# reorganized it
+OECD_yearly_data_check_list <- OECD_yearly_data_check_list %>%
+  select(
+    country_name.x,
+    country_code,
+    data_duration,
+    has_25_years,
+    In_OECD_data_set,
+    When_join_OECD,
+    include_in_the_paper
+  )
+
+#its time to write! 
+write.xlsx(OECD_yearly_data_check_list, file = "D:\\github\\RA-data-clening\\Data\\OECD\\OECD_yearly_data_check_list.xlsx")
+```
+
+
+
+
+

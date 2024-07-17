@@ -1,0 +1,508 @@
+---
+title: "World bank data cleaning"
+output: html_document
+date: "2024-05-28"
+---
+
+```{r setup, include=FALSE}
+#this file is for the code that cleaning and processing the Wolrd bank data
+```
+
+```{r}
+################################################################################
+#Step one Lode the all package that necessary. 
+#some of them may not be used this file
+#I just copy them around, so it will make my life easier 
+library (lubridate)     #the time series processing package
+library (cansim)        #provides easy access to the statistics canada data tale
+library (WDI)           #Accesses data from the world development indicators
+library (fredr)         #provide an interface to the federal reserve economic data API
+library (tsbox)         #Make time series conversion, aggregation and plotting simple
+library (RColorBrewer)  #color palettes for R graphics
+library(wesanderson)    #Provides color palettes inspired by Wes Anderson films.
+library(writexl)        #Writes data frames to Excel files.
+library(tidyr)          #Tidies messy data   
+library(xts)            #Extensible time series class for R   
+library(dplyr)          #Data manipulation and transformation.
+library(openxlsx)       #Read, write, and edit Excel files.
+library(knitr)
+library(testthat)
+library(ggplot2)
+
+#set the working direction
+#setwd("/Users/tie/Documents/GitHub/RA-data-cleaning-work/Code practice")
+
+#create a new file for the data 
+#dir.create("/Users/tie/Documents/GitHub/RA-data-cleaning-work/Code practice", recursive = TRUE)
+
+# Create the directory
+dir.create("F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/The raw data/World bank data", recursive = TRUE)
+
+#note R does not reconiated the chinese charater 
+
+
+```
+
+                                  
+
+```{r}
+################################################################################
+
+World_bank_raw <- read.csv("C:/Users/Tie Ma/Downloads/979714f4-5918-4d6b-b08b-b84212bf6a28_Series - Metadata.csv")
+
+#piovt the data
+
+world_bank_half_cook <- World_bank_raw %>%
+  pivot_longer(cols = starts_with("X"), 
+               names_to = "year", 
+               values_to = "value") %>%
+  mutate(year = as.numeric(str_extract(year, "\\d{4}"))) %>%
+  mutate(value = na_if(value, "")) %>%  # make the empty to the NA
+  mutate(value = as.numeric(value))  #transfer it the numeric
+
+
+gdp_constant_2015_usd <- world_bank_half_cook %>%
+  filter(Series.Name == "GDP (constant 2015 US$)") %>%
+  select(year, Country.Name, GDP_constant_2015_USD = value)
+
+
+gdp_constant_lcu <- world_bank_half_cook %>%
+  filter(Series.Name == "GDP (constant LCU)") %>%
+  select(year, Country.Name, GDP_constant_LCU = value)
+
+gdp_current_lcu <- world_bank_half_cook %>%
+  filter(Series.Name == "GDP (current LCU)") %>%
+  select(year, Country.Name, GDP_current_LCU = value)
+
+gdp_current_usd <- world_bank_half_cook %>%
+  filter(Series.Name == "GDP (current US$)") %>%
+  select(year, Country.Name, GDP_current_USD = value)
+
+wide_data <- gdp_constant_2015_usd %>%
+  full_join(gdp_constant_lcu, by = c("year", "Country.Name")) %>%
+  full_join(gdp_current_lcu, by = c("year", "Country.Name")) %>%
+  full_join(gdp_current_usd, by = c("year", "Country.Name"))
+
+write.xlsx(wide_data, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/The raw data/World bank data/wide_data .xlsx")
+
+
+
+
+```
+
+
+```{r}
+#data cleaning 
+# Count the number of years for each country with non-NA values for each GDP type
+library(tidyverse)
+
+#Calculate the number of years each country has data in the GDP_constant_LCU and GDP_current_LCU col.
+years_LCU_count <- wide_data %>%
+  filter(!is.na(GDP_constant_LCU) & !is.na(GDP_current_LCU)) %>%
+  group_by(Country.Name) %>%
+  summarize(years_of_data = n_distinct(year))
+
+#Calculate the number of years each country has data in the GDP_constant_2015_USD and GDP_current_USD columns
+years_USD_count <- wide_data %>%
+  filter(!is.na(GDP_constant_2015_USD) & !is.na(GDP_current_USD)) %>%
+  group_by(Country.Name) %>%
+  summarize(years_of_data = n_distinct(year))
+
+n_distinct(wide_data$Country.Name )
+
+
+```
+
+
+
+```{r}
+
+# The USD data time
+df_usd <- df_long %>%
+  select(Country, Year, Real_GDP_2015_USD, Nominal_GDP_USD)
+
+# filter out the countries that both have data.
+df_usd_filtered <- df_usd %>%
+  filter(!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD))
+
+# calcaute the the col number so It will give me the year of data
+years_USD_count <- df_usd_filtered %>%
+  group_by(Country) %>%
+  summarize(years_of_data_USD = n_distinct(Year))
+
+# keep the list of countries that have at least 25 years history
+countries_to_keep_USD <- years_USD_count %>%
+  filter(years_of_data_USD >= 25) %>%
+  pull(Country)
+
+#filter the countries!
+df_usd_filtered_final <- df_usd_filtered %>% filter(Country %in% countries_to_keep_USD)
+
+# the time for the LCU data
+data_duration <- df_usd %>%
+  group_by(Country) %>%
+  summarize(
+    start_year = min(Year[!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD)], na.rm = TRUE),
+    end_year = max(Year[!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD)], na.rm = TRUE)
+  )
+
+# final!
+summary_df <- data_duration %>%
+  mutate(has_25_years = ifelse(Country %in% countries_to_keep_USD, 1, 0)) %>%
+  mutate(in_final_dataset = ifelse(Country %in% df_usd_filtered_final$Country, 1, 0))
+
+# double check!
+#coverage_check_USD <- df_usd_filtered_final %>%
+ # #group_by(Country) %>%
+
+# the paper check time! 
+country_name_mapping <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  Country.Name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                   "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                   "India", "Iran (Islamic Republic of)", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", 
+                   "Netherlands", "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", 
+                   "South Africa", "Republic of Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "United Kingdom", "United States", 
+                   "Venezuela (Bolivarian Republic of)", "Zaire")
+)
+
+# create the list of include
+include_data <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  include = 1
+)
+
+# put the include inth the sumary 
+# yea, I just cope those things around
+final_summary <- summary_df %>%
+  left_join(country_name_mapping, by = "Country") %>%
+  left_join(include_data, by = "standardized_name") %>%
+  left_join(coverage_check_USD, by = "Country") %>%
+  mutate(include_in_paper = ifelse(is.na(include), 0, 1)) %>%
+  select(Country, start_year, end_year, has_25_years, complete_years, include_in_paper)
+
+# check the result
+print(final_summary)
+
+# save the output!
+write_xlsx(final_summary, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/final_summary.xlsx")
+
+```
+
+
+```{r}
+#its time for the calculation 
+
+# calculate the price level
+per_infation_raw <- per_infation_raw %>%
+  group_by(Country.Name) %>%
+  mutate(Price_Level_LCU = Nominal_GDP_LCU / Real_GDP_LCU,
+         Price_Level_USD = Nominal_GDP_USD / Real_GDP_2015_USD)
+
+# calculate the inflation
+per_infation_raw <- per_infation_raw %>%
+  arrange(Country.Name, year) %>%
+  mutate(Inflation_Rate_LCU = (Price_Level_LCU - lag(Price_Level_LCU)) / lag(Price_Level_LCU) * 100,
+         Inflation_Rate_USD = (Price_Level_USD - lag(Price_Level_USD)) / lag(Price_Level_USD) * 100)
+
+# print the result.
+print(per_infation_raw, n = 100)
+
+
+write.xlsx(per_infation_raw, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/The raw data/World bank data/world_bank_data_cleaned.xlsx")
+
+```
+
+
+
+```{r}
+
+# create a new data frame with the columns we nee
+#why cupcake? I am eathing one now
+cupcake <- wide_data %>%
+  mutate(
+    Real_GDP_LCU = GDP_constant_LCU,
+    Nominal_GDP_LCU = GDP_current_LCU,
+    Real_GDP_2015_USD = GDP_constant_2015_USD,
+    Nominal_GDP_USD = GDP_current_USD
+  )
+
+# make sure the cup cake work
+all_countries <- cupcake %>%
+  distinct(Country.Name)
+
+# calcuare the duration of the data
+data_duration <- cupcake %>%
+  group_by(Country.Name) %>%
+  summarize(
+    Real_GDP_LCU_start_year = min(year[!is.na(Real_GDP_LCU)], na.rm = TRUE),
+    Real_GDP_LCU_end_year = max(year[!is.na(Real_GDP_LCU)], na.rm = TRUE),
+    Nominal_GDP_LCU_start_year = min(year[!is.na(Nominal_GDP_LCU)], na.rm = TRUE),
+    Nominal_GDP_LCU_end_year = max(year[!is.na(Nominal_GDP_LCU)], na.rm = TRUE),
+    Real_GDP_2015_USD_start_year = min(year[!is.na(Real_GDP_2015_USD)], na.rm = TRUE),
+    Real_GDP_2015_USD_end_year = max(year[!is.na(Real_GDP_2015_USD)], na.rm = TRUE),
+    Nominal_GDP_USD_start_year = min(year[!is.na(Nominal_GDP_USD)], na.rm = TRUE),
+    Nominal_GDP_USD_end_year = max(year[!is.na(Nominal_GDP_USD)], na.rm = TRUE)
+  ) %>%
+  mutate(
+    Real_GDP_LCU_start_year = ifelse(Real_GDP_LCU_start_year == Inf, NA, Real_GDP_LCU_start_year),
+    Real_GDP_LCU_end_year = ifelse(Real_GDP_LCU_end_year == -Inf, NA, Real_GDP_LCU_end_year),
+    Nominal_GDP_LCU_start_year = ifelse(Nominal_GDP_LCU_start_year == Inf, NA, Nominal_GDP_LCU_start_year),
+    Nominal_GDP_LCU_end_year = ifelse(Nominal_GDP_LCU_end_year == -Inf, NA, Nominal_GDP_LCU_end_year),
+    Real_GDP_2015_USD_start_year = ifelse(Real_GDP_2015_USD_start_year == Inf, NA, Real_GDP_2015_USD_start_year),
+    Real_GDP_2015_USD_end_year = ifelse(Real_GDP_2015_USD_end_year == -Inf, NA, Real_GDP_2015_USD_end_year),
+    Nominal_GDP_USD_start_year = ifelse(Nominal_GDP_USD_start_year == Inf, NA, Nominal_GDP_USD_start_year),
+    Nominal_GDP_USD_end_year = ifelse(Nominal_GDP_USD_end_year == -Inf, NA, Nominal_GDP_USD_end_year)
+  ) %>%
+  mutate(
+    Real_GDP_LCU_duration = paste(Real_GDP_LCU_start_year, "-", Real_GDP_LCU_end_year),
+    Nominal_GDP_LCU_duration = paste(Nominal_GDP_LCU_start_year, "-", Nominal_GDP_LCU_end_year),
+    Real_GDP_2015_USD_duration = paste(Real_GDP_2015_USD_start_year, "-", Real_GDP_2015_USD_end_year),
+    Nominal_GDP_USD_duration = paste(Nominal_GDP_USD_start_year, "-", Nominal_GDP_USD_end_year)
+  ) %>%
+  select(
+    Country.Name,
+    Real_GDP_LCU_duration,
+    Nominal_GDP_LCU_duration,
+    Real_GDP_2015_USD_duration,
+    Nominal_GDP_USD_duration
+  )
+
+#  ultra check
+final_data_duration <- all_countries %>%
+  left_join(data_duration, by = "Country.Name")
+
+# check time
+print(final_data_duration)
+
+
+```
+
+
+```{r}
+#check list time
+
+# Count the number of years for which each country has data in the GDP_constant_LCU and GDP_current_LCU columns
+years_LCU_count <- wide_data %>%
+  filter(!is.na(GDP_constant_LCU) & !is.na(GDP_current_LCU)) %>%
+  group_by(Country.Name) %>%
+  summarize(years_of_data_LCU = n_distinct(year))
+
+#filter out the countties that have at least 25 years history
+countries_to_keep_LCU <- years_LCU_count %>%
+  mutate(has_25_years_LCU = ifelse(years_of_data_LCU >= 25, 1, 0)) %>%
+  select(Country.Name, has_25_years_LCU)
+
+#only keep the countries that have data 
+#the number of row for years
+years_USD_count <- wide_data %>%
+  filter(!is.na(GDP_constant_2015_USD) & !is.na(GDP_current_USD)) %>%
+  group_by(Country.Name) %>%
+  summarize(years_of_data_USD = n_distinct(year))
+
+# filter out the countries that have at least 25 years history
+# give it to 1 otherwise give it to the zero 
+countries_to_keep_USD <- years_USD_count %>%
+  mutate(has_25_years_USD = ifelse(years_of_data_USD >= 25, 1, 0)) %>%
+  select(Country.Name, has_25_years_USD)
+
+# combine those two together!
+combined_25_years_data <- countries_to_keep_LCU %>%
+  full_join(countries_to_keep_USD, by = "Country.Name")
+
+# output
+print(combined_25_years_data)
+
+final_summary <- final_data_duration %>%
+  left_join(combined_25_years_data, by = "Country.Name")
+
+# check the result
+print(final_summary)
+```
+
+```{r}
+countries_in_worldbank <- per_infation_raw %>%
+  distinct(Country.Name) %>%
+  mutate(include_in_worldbank_dataset = 1)
+
+
+final_summary <- final_summary %>%
+  left_join(countries_in_worldbank, by = "Country.Name") %>%
+  mutate(include_in_worldbank_dataset = ifelse(is.na(include_in_worldbank_dataset), 0, include_in_worldbank_dataset))
+
+
+print(final_summary)
+
+write.xlsx(final_summary, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/The raw data/World bank data/final_summary_per_paper.xlsx")
+
+
+```
+
+
+
+```{r}
+
+
+# the paper check time! 
+country_name_mapping <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  Country.Name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                   "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                   "India", "Iran (Islamic Republic of)", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", 
+                   "Netherlands", "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", 
+                   "South Africa", "Republic of Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "United Kingdom", "United States", 
+                   "Venezuela (Bolivarian Republic of)", "Zaire")
+)
+
+# create the list of include
+include_data <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  include = 1
+)
+
+#put inculd into the summary
+final_summary <- final_summary %>%
+  left_join(country_name_mapping, by = "Country.Name") %>%
+  left_join(include_data, by = "standardized_name") %>%
+  mutate(include_in_paper = ifelse(is.na(include), 0, 1)) %>%
+  select(-include, -standardized_name)
+
+# check the reuslt
+print(final_summary)
+#look good!
+
+# save it
+write.xlsx(final_summary, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/The raw data/World bank data/final_summary_per_paper.xlsx")
+
+
+
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

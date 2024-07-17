@@ -1,0 +1,489 @@
+---
+title: "Week 2 code"
+author: "Rebecca Tobin"
+date: "2024-05-03"
+output: pdf_document
+---
+
+```{r, include=FALSE}
+rm(list = ls()) # clear workspace
+knitr::opts_chunk$set(echo = TRUE)
+# echo = TRUE means the code will be shown in the final document
+```
+
+```{r, include = FALSE}
+install.packages("dplyr")
+library(dplyr) # tidyverse package
+install.packages("ggplot2")
+library(ggplot2) # for plotting
+theme_set(theme_bw()) # set the theme for the plots
+#install.packages("palmerpenguins") # If you haven't installed the package yet
+library(palmerpenguins) # for the penguins data
+#install.packages("GGally")
+library(GGally) # for making nice pairs plots
+#install.packages("MASS")
+library(MASS) # for the crabs data
+#install.packages("knitr")
+library(knitr) # for making tables look nice
+```
+
+This is an R markdown document. It allows you to intersperse text and code. It's great for making reports that have lots of plots and tables
+
+You can add headers using a '#' symbol
+
+# Load data
+
+```{r}
+data(penguins)
+# View(penguins) # Keep this line commented for compiling the document
+```
+
+How to replace NA values with zeros
+
+(https://tidyr.tidyverse.org/reference/replace_na.html)
+
+```{r}
+library(tidyr)
+
+penguins |> head()
+
+penguins |> replace_na(list(bill_length_mm = 0, bill_depth_mm = 0,
+                            flipper_length_mm = 0, body_mass_g = 0)) |> head()
+```
+
+
+# Tidyverse style coding
+
+```{r}
+# classic style
+nrow(penguins)
+
+# tidyverse style
+penguins |> nrow()
+# '|>' is called a pipe; we say you are piping the data into a function
+
+# if there are multiple arguments, piping puts the object into the first argument
+
+# classic style
+quantile(penguins$body_mass_g, prob = c(0.25,0.5,0.75), na.rm = TRUE)
+
+# tidyverse style
+penguins |> pull(body_mass_g) |> quantile(probs = c(0.25,0.5,0.75), na.rm = TRUE)
+```
+
+
+tidyverse functions we will use today:
+
+* pull() -> get one column from a dataframe
+
+* select() -> get multiple columns from a dataframe
+
+
+# Tables
+
+Suppose we want to know how many penguins there are of each sex. We would use the table() function.
+
+```{r}
+penguins |> pull(sex) |> table()
+
+# If we want to see the missing values
+penguins |> pull(sex) |> table(useNA = "ifany")
+```
+
+We can also add margins to the table.
+
+```{r}
+penguins |> pull(sex) |> table(useNA = "ifany") |> addmargins()
+```
+
+If we want the proportions rather than frequencies, we can feed our output into prop.table()
+
+```{r}
+penguins |> pull(sex) |> table(useNA = "ifany") |> prop.table()
+
+# round the answer to to digits
+penguins |> pull(sex) |> table(useNA = "ifany") |> prop.table() |> round(2)
+```
+
+We can also consider two categorical variables.
+
+```{r}
+table(penguins$species, penguins$island, useNA = "ifany")
+# Notice that if there are no missing values, they are not shown if we specify
+# ifany
+
+table(penguins$species, penguins$island, useNA = "ifany") |> addmargins()
+```
+
+Now let's look at a contingency table with proportions
+
+```{r}
+# Option 1: divide by everything
+table(penguins$island, penguins$species) |> prop.table()
+# Let's see what's going on
+table(penguins$island, penguins$species) |> addmargins()
+44/344 # For island == "Biscoe" and species == "Adelie"
+```
+
+```{r}
+# Option 2: Divide by row sums
+table(penguins$island, penguins$species) |> prop.table(margin = 1)
+
+table(penguins$island, penguins$species) |> addmargins()
+44/168 # For island == "Biscoe" and species == "Adelie"
+```
+
+
+```{r}
+# Option 3: Divide by column sums
+table(penguins$island, penguins$species) |> prop.table(margin = 2)
+
+table(penguins$island, penguins$species) |> addmargins()
+44/152 # For island == "Biscoe" and species == "Adelie"
+```
+
+To make the table nice in a document, we can use the kable() function.
+
+```{r}
+table(penguins$island, penguins$species) |> addmargins() |>
+  kable(caption = "Species frequencies across islands")
+```
+
+```{r}
+penguins |>
+  kable(caption = "My Data")
+```
+
+
+# ggplot basics
+
+The way I like to think of ggplot is using layers to slowly build up different elements of the plot and adding them together using a '+' sign.
+
+Suppose we want to make a scatterplot of bill length vs bill depth
+
+First, you make a ggplot object and indicate what the x and y variables are using the aes() function
+
+```{r}
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm))
+```
+
+You can see that we get a blank canvas. Now we add the points using another layer. For a scatterplot, the function we use is called geom_point()
+
+```{r}
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point()
+# notice we get a warning indicating how many points were not included due to
+# missing values
+```
+
+In addition to the x and y variables, there are a few other "aesthetic" elements we can assign to other variables, for example:
+
+* color: colour of the points
+
+* size: size of the points
+
+* shape: shape of the points
+
+
+```{r}
+# different colours for the 3 different species
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = species)) +
+  geom_point()
+
+# different colours for the 3 different species and different shapes for the 
+# different sexes
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = species, shape = sex)) +
+  geom_point()
+
+# different colours for the 3 different species and different sizes for the 
+# different sexes
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = species, size = sex)) +
+  geom_point()
+
+penguins |> subset(!is.na(sex)) |>
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = species, size = sex)) +
+  geom_point()
+
+# Often it will take some experimenting before you find something that looks
+# good
+```
+
+Some of these aestetic elements can handle continuous variables
+
+```{r}
+# colour by body mass values
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = body_mass_g)) +
+  geom_point()
+
+# change size by body mass values
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm, size = body_mass_g)) +
+  geom_point()
+```
+
+
+# Scatterplots
+
+Continuing with the same data, there are lots of arguments we can play around with in the geom_point() function
+
+```{r}
+?geom_point
+
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point(alpha = 0.5, # makes the points transparent
+             colour = "violet",
+             shape = 3)
+```
+
+# Histograms
+
+For a histogram, we only plot one variable, so there is no 'y' argument in aes(). The function we use is geom_histogram()
+
+```{r}
+penguins |> 
+  ggplot(aes(x = bill_depth_mm)) +
+  geom_histogram()
+
+# change the number of bins
+penguins |> 
+  ggplot(aes(x = bill_depth_mm)) +
+  geom_histogram(bins = 15)
+
+# We can also have the bins start and stop are particular values
+# Let's check what the range of values for bill depth are
+penguins |> pull(bill_depth_mm) |> range(na.rm = TRUE)
+
+penguins |> 
+  ggplot(aes(x = bill_depth_mm)) +
+  geom_histogram(breaks = seq(13, 21.5, 0.5))
+
+# colour by species
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, color = species)) +
+  geom_histogram(breaks = seq(13, 21.5, 0.5))
+# The above doesn't look good. Better to use both color and fill for histograms
+
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, fill = species, color = species)) +
+  geom_histogram(breaks = seq(13, 21.5, 0.5), alpha = 0.4)
+# The default is to use stacked bars, which I personally don't like. To have the 
+# bars overlap, need to specify position = "identity"
+
+penguins |> 
+  ggplot(aes(x = bill_depth_mm, fill = species, color = species)) +
+  geom_histogram(position="identity", breaks = seq(13, 21.5, 0.5), alpha = 0.4)
+```
+
+Rather than going over every different kind of plot you can make in R, we will move on to exploring how to modify elements like labels, limits, etc. Here are a few excellent resources for exploring other kinds of plots:
+
+* http://www.sthda.com/english/wiki/ggplot2-essentials
+
+* https://www.data-to-viz.com/
+
+
+# Customizing your plot
+
+Here we modify:
+
+* figure dimentions
+
+* colours
+
+* labels
+
+* legend title
+
+* label position
+
+```{r, fig.height=2, fig.width=3}
+
+```
+
+
+```{r, fig.width=7, fig.height=6}
+# For RMarkdown, we specify the figure dimensions in the code snip heading
+
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = species)) +
+  geom_point() +
+  # add labels
+  labs(x = "Bill Depth (mm)", y = "Bill Length (mm)", 
+       title = "Relationship between Bill Length and Bill Depth across different species",
+       subtitle = "Data from palmerpenguins library") + 
+  # change the colours of the species
+  scale_color_manual(values = c("steelblue","#FFC300","plum"),
+  # Change the title in the legend
+                     name = "Species") +
+  # Change the legend position
+  theme(legend.position = c(0.1, 0.87))
+```
+
+For named colours: https://sape.inf.usi.ch/quick-reference/ggplot2/colour
+
+To get any colour and look up the code: https://htmlcolorcodes.com/colors/
+
+
+It will take lots of practice to remember what functions like scale_color_manual() and theme() do, and even people who code in R regularly forgot. Instead of trying to memorize any of these commands, it is better to just look up how to do something when needed. Once you have written some of your own code, then you can start referring back to your previous work.
+
+Suppose we wanted to check the tick marks on the above plot. How would we go about looking up that information?
+
+Option 1: Check out STHDA
+
+http://www.sthda.com/english/wiki/ggplot2-essentials
+
+* We can scroll down to item 23: Axis scales and transformations
+
+* It looks like the breaks argument in the scale_y_continuous() and scale_x_continuous() functions are what I'm looking for, but there aren't any examples
+
+Option 2: search your question and find a forum post
+
+* I looked up "ggplot change axis tick marks" and found this site: https://r-charts.com/ggplot2/axis/
+
+* I found this example: scale_y_continuous(breaks = seq(120, 320, by = 20))
+
+Option 3: If you know the function you need but forget how to use it, you can use the ? and console
+
+* I type ?scale_y_continuous into the console
+
+* I see that there are the argument breaks and minor_breaks that look useful
+
+* For both of these, I can provide a numeric vector of positions
+
+
+```{r, fig.width=7, fig.height=6}
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm, color = species)) +
+  geom_point() +
+  # add labels
+  labs(x = "Bill Depth (mm)", y = "Bill Length (mm)", 
+       title = "Relationship between Bill Length and Bill Depth differes across species",
+       subtitle = "Data from palmerpenguins library") + 
+  # change the colours of the species
+  scale_color_manual(values = c("steelblue","#FFC300","plum"),
+  # Change the title in the legend
+                     name = "Species") +
+  # Change the legend position
+  theme(legend.position = c(0.1, 0.87)) +
+  # This changes the y grid and y ticks
+  scale_y_continuous(breaks = seq(30,60,5), minor_breaks = seq(30,60,1)) +
+  # This changes the x grid and x ticks
+  scale_x_continuous(breaks = seq(13,22,2), minor_breaks = seq(13,22,1))
+```
+
+# Grids of plots
+
+```{r}
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point() +
+  facet_grid(species ~ .) # split in the vertical direction
+```
+
+```{r}
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point() +
+  facet_grid(. ~ species) # split in the horizontal direction
+```
+
+```{r}
+penguins |> ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point() +
+  facet_grid(sex ~ species) # split in the horizontal direction
+
+# checks every row to see which are missing for sex (TRUE if missing)
+is.na(penguins$sex)
+# Flip TRUE/FALSE so now FALSE is missing
+!is.na(penguins$sex)
+
+# Let's remove those missing values
+penguins |> 
+  subset(!is.na(sex)) |> # This line removes rows were sex is missing
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point() +
+  facet_grid(sex ~ species) # sex along vertical and species along horizontal
+```
+
+Suppose we had 9 species and we wanted a 3x3 grid across different species. We could use the facet_wrap() function and specify the number of columns and rows
+
+```{r}
+penguins |> 
+  subset(!is.na(sex)) |>
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point() +
+  facet_wrap(~ species, ncol = 2, nrow = 2)
+```
+
+You can also allow the axes to be different for the different subplots
+
+```{r}
+penguins |> 
+  subset(!is.na(sex)) |>
+  ggplot(aes(x = bill_depth_mm, y = bill_length_mm)) +
+  geom_point() +
+  facet_wrap(~ species, ncol = 2, nrow = 2, scales = "free")
+```
+
+
+# Pairs plot
+
+
+```{r}
+ggpairs(penguins, columns = c(3,4,5,6), mapping = aes(color = penguins$species))
+```
+
+Note: the correlations shown are pearson correlations.
+
+# Exersice
+
+Now, we are going to imagine someone has given you a new dataset and asked you to provide them a summary of the data. The dataset is of crabs.
+
+Here are some questions to get your started:
+
+* How many crabs are there of each species and each sex
+
+* Do any of the 5 measurements have a non-symmetric distribution? If yes, does the distribution become symmetric if we seperate by species or sex?
+
+* What is the relationship between carapace length and carapace width? Does it change for different sexes and species?
+
+* What is the relationship between carapace length and rear width? Does it change for different sexes and species?
+
+* Are there any outliers in the 5 measurements?
+
+You can also go to this website (http://www.sthda.com/english/wiki/ggplot2-essentials) and try and make a plot of each type in their list.
+
+
+BONUS: If you are somewhat more experienced in R or would like more of a challenge, try and incorporate these visualization principles into your plots (https://royal-statistical-society.github.io/datavisguide/docs/principles.html)
+
+
+```{r}
+data("crabs")
+?crabs
+```
+
+
+
+# Bonus exercise - use your own data
+
+Practice plotting with your own data
+
+
+# Ideas for next lab
+
+* Dealing with dates
+
+* Pivoting data
+
+* Joining datasets together
+
+* Data manipulation essentials
+
+* t-tests, ANOVA, etc.
+
+* Linear regression (including interaction terms)
+
+* Logistic regression
+
+* 
+
+

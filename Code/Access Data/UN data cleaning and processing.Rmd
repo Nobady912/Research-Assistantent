@@ -1,0 +1,482 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-05-28"
+---
+
+```{r setup, include=FALSE}
+################################################################################
+#Step one Lode the all package that necessary. 
+#some of them may not be used this file
+#I just copy them around, so it will make my life easier 
+
+library (lubridate)     #the time series processing package
+library (cansim)        #provides easy access to the statistics canada data tale
+library (WDI)           #Accesses data from the world development indicators
+library (fredr)         #provide an interface to the federal reserve economic data API
+library (tsbox)         #Make time series convverstion, aggregation and plotting simple
+library (RColorBrewer)  #color palettes for R graphics
+library(wesanderson)    #Provides color palettes inspired by Wes Anderson films.
+library(writexl)        #Writes data frames to Excel files.
+library(tidyr)          #Tidies messy data   
+library(xts)            #Extensible time series class for R   
+library(dplyr)          #Data manipulation and transformation.
+library(openxlsx)       #Read, write, and edit Excel files.
+library(IMFData)     #accessing the data from the IMF data 
+library(ggplot2)        #Create elegant data visualisations using the Grammar of Graphics.
+library(openxlsx)       #Read, write, and edit Excel files.
+library(readxl)
+
+
+```
+
+```{r}
+#2024/05/30 v0.01 UN and world bank are the most user friendly data source, I just downlode the raw data base and clean it.
+
+
+```
+
+
+
+```{r}
+#lode the data!
+#GDP_constant_USD_UN_2015
+
+GDP_constant_USD_UN_2015 <- read_excel("F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/GDP_constant_ USD_UN_2015.xlsx")
+
+#check the data
+View(GDP_constant_USD_UN_2015)
+
+#Check the col name 
+colnames(GDP_constant_USD_UN_2015)
+
+#clean the data
+df <- GDP_constant_USD_UN_2015 %>%
+  mutate(across(starts_with("19") | starts_with("20"), ~ as.numeric(gsub(",", "", .))))
+
+#pivot_longer time! 
+#its saved my life in this project
+df_long <- df %>%
+  pivot_longer(
+    cols = starts_with("19") | starts_with("20"),
+    names_to = "Year",
+    values_to = "GDP"
+  )
+
+#check the data
+print(df_long)
+head(df_long)
+
+
+#change the colname to make life good
+df_long <- df_long %>%
+  rename(Real_GDP_2015_USD = GDP)
+
+```
+
+
+
+
+```{r}
+#lode the second data 
+GDP_cureent_USD_UN <- read_excel("F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/GDP_cureent_USD_UN.xlsx")
+#View(GDP_cureent_USD_UN)
+head(GDP_cureent_USD_UN)
+
+GDP_current_USD <- GDP_cureent_USD_UN %>%
+  mutate(across(starts_with("19") | starts_with("20"), ~ as.numeric(gsub(",", "", .))))
+
+
+#pivot_longer time
+GDP_current_USD_long <- GDP_current_USD %>%
+  pivot_longer(
+    cols = starts_with("19") | starts_with("20"),
+    names_to = "Year",
+    values_to = "GDP"
+  )
+
+#check the data 
+head(GDP_current_USD_long)
+
+
+#change the name 
+GDP_current_USD_long <- GDP_current_USD_long %>% rename(Nominal_GDP_USD = GDP)
+GDP_current_USD_long <- GDP_current_USD_long %>% rename(Country = ...2 )
+GDP_current_USD_long <- GDP_current_USD_long %>% rename(IndicatorName = ...3 )
+
+
+#left join!
+df_long <- left_join(df_long, GDP_current_USD_long, by = c("Country", "Year"))
+
+
+#check the oucome...
+print(df_long)
+
+
+#save the data 
+copy_1 <- df_long
+
+#keep going
+df_long <- df_long %>% select(Year, Country, Real_GDP_2015_USD, Nominal_GDP_USD)
+
+```
+
+
+```{r}
+
+#load the third data
+GDP_constant_NCU_2015 <- read_excel("F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/GDP_constant_NCU_UN_2015.xlsx")
+
+
+
+GDP_constant_NCU_2015 <- GDP_constant_NCU_2015 %>%
+  mutate(across(starts_with("19") | starts_with("20"), ~ as.numeric(gsub(",", "", .))))
+
+GDP_constant_NCU_2015_long <- GDP_constant_NCU_2015 %>%
+  pivot_longer(
+    cols = starts_with("19") | starts_with("20"),
+    names_to = "Year",
+    values_to = "GDP"
+  )
+
+NCU_copy <- GDP_constant_NCU_2015_long
+
+
+NCU_copy <- NCU_copy %>% rename(Real_GDP_2015_NCU = GDP)
+
+NCU_copy <- NCU_copy %>% rename(Country = ...2 , 
+                                IndicatorName = ...3)
+
+
+NCU_copy <- NCU_copy %>% select(Year, Country, Real_GDP_2015_NCU)
+
+
+GDP_current_NCU_UN <- read_excel("F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/GDP_current_NCU_UN.xlsx")
+
+
+GDP_current_NCU_UN <- GDP_current_NCU_UN %>%
+  mutate(across(starts_with("19") | starts_with("20"), ~ as.numeric(gsub(",", "", .))))
+
+
+GDP_current_NCU_UN_long <- GDP_current_NCU_UN %>%
+  pivot_longer(
+    cols = starts_with("19") | starts_with("20"),
+    names_to = "Year",
+    values_to = "GDP"
+  )
+
+#for the future time
+#the UN data got NCU and USD data, I processed it four different times 
+#I am not sure why
+
+
+GDP_current_NCU_UN_long <- GDP_current_NCU_UN_long %>% rename(Nominal_GDP_NCU = GDP)
+
+GDP_current_NCU_UN_long <- GDP_current_NCU_UN_long %>% rename(Country = ...2 , 
+                                IndicatorName = ...3)
+
+GDP_current_NCU_UN_long <- GDP_current_NCU_UN_long %>% select(Year, Country, Nominal_GDP_NCU)
+
+
+NCU_copy <- left_join(NCU_copy, GDP_current_NCU_UN_long, by = c("Country", "Year"))
+
+
+
+df_long <- left_join(df_long, NCU_copy, by = c("Country", "Year"))
+
+write.csv(df_long, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/df_long.csv")
+
+
+
+```
+
+
+```{r}
+# its the time to create the check lis
+
+# take of all use USD data for the further analyising
+df_usd <- df_long %>%
+  select(Country, Year, Real_GDP_2015_USD, Nominal_GDP_USD)
+
+# filter out rows where Real_GDP_2015_USD and Nominal_GDP_USD are both NA
+df_usd_filtered <- df_usd %>%
+  filter(!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD))
+
+# chec the year for he countries has the data.
+years_USD_count <- df_usd_filtered %>%
+  group_by(Country) %>%
+  summarize(years_of_data_USD = n_distinct(Year))
+
+# filter out the countries that has greater than 25 years of data 
+countries_to_keep_USD <- years_USD_count %>%
+  filter(years_of_data_USD >= 25) %>%
+  pull(Country)
+```
+
+
+```{r}
+
+# check the countries list to have 
+n_distinct_countries_to_keep <- n_distinct(countries_to_keep_USD)
+print(paste("Number of countries to keep:", n_distinct_countries_to_keep))
+
+# filter out the countries for the data have less than 25 years
+countries_to_delete_USD <- years_USD_count %>%
+  filter(years_of_data_USD < 25) %>%
+  pull(Country)
+
+#show the numbers of the countries to delete
+n_distinct_countries_to_delete <- n_distinct(countries_to_delete_USD)
+print(paste("Number of countries to delete:", n_distinct_countries_to_delete))
+
+# print the part of keep
+print("Countries to keep:")
+print(countries_to_keep_USD)
+
+# teh delete countries
+print("Countries to delete:")
+print(countries_to_delete_USD)
+
+#the list 
+df_usd_filtered_final <- df_usd_filtered %>% filter(Country %in% countries_to_keep_USD)
+
+#double check it again
+#becase i do not trust myself
+coverage_check_USD <- df_usd_filtered_final %>%
+  group_by(Country) %>%
+  summarize(complete_years = all(1970:2022 %in% Year), .groups = 'drop')
+
+
+
+```
+
+
+```{r}
+# 计算价格水平 (P_t)
+# the price level
+df_usd_filtered_final <- df_usd_filtered_final %>%
+  group_by(Country) %>%
+  mutate(Price_Level_USD = Nominal_GDP_USD / Real_GDP_2015_USD)
+
+# 计算通货膨胀率 (π_t)
+# the inflation
+df_usd_filtered_final <- df_usd_filtered_final %>%
+  arrange(Country, Year) %>%
+  mutate(Inflation_Rate_USD = ((Price_Level - lag(Price_Level)) / lag(Price_Level)) * 100)
+
+# the outcome
+print(df_usd_filtered_final, n = 100)
+
+#save the data
+write.xlsx(df_usd_filtered_final, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/UN_GDP_USD.xlsx")
+
+
+```
+
+
+
+
+```{r}
+
+#here is for the check list, so its can make my life easiler
+
+#The USD data time
+df_usd <- df_long %>%
+  select(Country, Year, Real_GDP_2015_USD, Nominal_GDP_USD)
+
+#create the years check list
+#check the list for the countries that have data for the both real and nominal USD data.
+#delete the row with the na
+df_usd_filtered <- df_usd %>%
+  filter(!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD))
+
+# the countries check list
+years_USD_count <- df_usd_filtered %>%
+  group_by(Country) %>%
+  summarize(years_of_data_USD = n_distinct(Year))
+
+
+# filter the countries have at least 25 years
+countries_to_keep_USD <- years_USD_count %>%
+  filter(years_of_data_USD >= 25) %>%
+  pull(Country)
+
+
+# filter the saved data
+df_usd_filtered_final <- df_usd_filtered %>% filter(Country %in% countries_to_keep_USD)
+
+# calcaute the each countries data cover range.
+data_duration <- df_usd %>%
+  group_by(Country) %>%
+  summarize(
+    start_year = min(Year[!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD)], na.rm = TRUE),
+    end_year = max(Year[!is.na(Real_GDP_2015_USD) & !is.na(Nominal_GDP_USD)], na.rm = TRUE)
+  )
+
+
+#The final time!
+summary_df <- data_duration %>%
+  mutate(has_25_years = ifelse(Country %in% countries_to_keep_USD, 1, 0)) %>%
+  mutate(in_final_dataset = ifelse(Country %in% df_usd_filtered_final$Country, 1, 0))
+
+# check for if the data is complete
+#coverage_check_USD <- df_usd_filtered_final %>%
+ # group_by(Country) %>%
+  #summarize(complete_years = all(1960:2022 %in% Year), .groups = 'drop')
+
+
+#The paper countries check list
+country_name_mapping <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  Country = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+              "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+              "India", "Iran (Islamic Republic of)", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", 
+              "Netherlands", "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", 
+              "South Africa", "Republic of Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "United Kingdom", "United States", 
+              "Venezuela (Bolivarian Republic of)", "Zaire")
+)
+
+#fro the inlucde list
+include_data <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  include = 1
+)
+
+# put the include into the final summariy
+final_summary <- summary_df %>%
+  left_join(country_name_mapping, by = "Country") %>%
+  left_join(include_data, by = "standardized_name") %>%
+  left_join(coverage_check_USD, by = "Country") %>%
+  mutate(include_in_paper = ifelse(is.na(include), 0, 1)) %>%
+  select(Country, start_year, end_year, has_25_years, in_final_dataset, include_in_paper)
+
+# the tiume to check
+print(final_summary)
+
+#save the result
+write_xlsx(final_summary, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/final_summary_UN_USD.xlsx")
+
+
+
+```
+
+
+```{r}
+
+#its the time to process the NCU data
+
+# create a new list for only NCU GDP
+df_ncu <- df_long %>%
+  select(Country, Year, Real_GDP_2015_NCU, Nominal_GDP_NCU)
+
+# filter out the row that have the bvoth real and nominal gdp data
+df_ncu_filtered <- df_ncu %>%
+  filter(!is.na(Real_GDP_2015_NCU) & !is.na(Nominal_GDP_NCU))
+
+# calculate each countries row that have the data on both Real and Nominal NCU
+# aka: the year of data they have
+years_NCU_count <- df_ncu_filtered %>%
+  group_by(Country) %>%
+  summarize(years_of_data_NCU = n_distinct(Year))
+
+# create the list for the countries that have at least 25 years...
+countries_to_keep_NCU <- years_NCU_count %>%
+  filter(years_of_data_NCU >= 25) %>%
+  pull(Country)
+
+# create the countries list
+df_ncu_filtered_final <- df_ncu_filtered %>% filter(Country %in% countries_to_keep_NCU)
+
+# calcuate teh data range for each countries
+data_duration_ncu <- df_ncu %>%
+  group_by(Country) %>%
+  summarize(
+    start_year = min(Year[!is.na(Real_GDP_2015_NCU) & !is.na(Nominal_GDP_NCU)], na.rm = TRUE),
+    end_year = max(Year[!is.na(Real_GDP_2015_NCU) & !is.na(Nominal_GDP_NCU)], na.rm = TRUE)
+  )
+
+# create the final NCU data frame
+summary_df_ncu <- data_duration_ncu %>%
+  mutate(has_25_years = ifelse(Country %in% countries_to_keep_NCU, 1, 0)) %>%
+  mutate(in_final_dataset = ifelse(Country %in% df_ncu_filtered_final$Country, 1, 0))
+
+# check if each countries have the data between 1960 to 2022?
+# double check time!
+#coverage_check_NCU <- df_ncu_filtered_final %>%
+  #group_by(Country) %>%
+  #summarize(complete_years = all(1960:2022 %in% Year), .groups = 'drop')
+
+# calculate the price level(P_t)
+df_ncu_filtered_final <- df_ncu_filtered_final %>%
+  group_by(Country) %>%
+  mutate(Price_Level_NCU = Nominal_GDP_NCU / Real_GDP_2015_NCU)
+
+# calcuat the infaltion (π_t)
+df_ncu_filtered_final <- df_ncu_filtered_final %>%
+  arrange(Country, Year) %>%
+  mutate(Inflation_Rate_NCU = ((Price_Level_NCU - lag(Price_Level_NCU)) / lag(Price_Level_NCU)) * 100)
+
+
+# print the result! 
+print(df_ncu_filtered_final, n = 100)
+
+# output the data 
+
+write.xlsx(df_ncu_filtered_final, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/UN_GDP_NCU.xlsx")
+
+
+
+
+# the paper countriest list
+country_name_mapping <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  Country = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+              "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+              "India", "Iran (Islamic Republic of)", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", 
+              "Netherlands", "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", 
+              "South Africa", "Republic of Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "United Kingdom", "United States", 
+              "Venezuela (Bolivarian Republic of)", "Zaire")
+)
+
+# create the include list
+include_data <- data.frame(
+  standardized_name = c("Argentina", "Australia", "Austria", "Belgium", "Bolivia", "Brazil", "Canada", "Colombia", "Costa Rica", "Denmark", 
+                        "Dominican Republic", "Ecuador", "El Salvador", "Finland", "France", "Germany", "Greece", "Guatemala", "Iceland", 
+                        "India", "Iran", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Kenya", "Malaysia", "Mexico", "Netherlands", 
+                        "New Zealand", "Norway", "Pakistan", "Panama", "Paraguay", "Philippines", "Portugal", "Singapore", "South Africa", 
+                        "South Korea", "Spain", "Sweden", "Switzerland", "Thailand", "Tunisia", "UK", "US", "Venezuela", "Zaire"),
+  include = 1
+)
+
+# put the include within the NCU final summary
+final_summary_ncu <- summary_df_ncu %>%
+  left_join(country_name_mapping, by = "Country") %>%
+  left_join(include_data, by = "standardized_name") %>%
+  left_join(coverage_check_NCU, by = "Country") %>%
+  mutate(include_in_paper = ifelse(is.na(include), 0, 1)) %>%
+  select(Country, start_year, end_year, has_25_years, in_final_dataset, include_in_paper)
+
+
+#print the result
+print(final_summary_ncu)
+
+#save the reulst 
+
+write_xlsx(final_summary_ncu, "F:/OneDrive - Carleton University/The GDP data cleaning-TIEMA/Un/final_summary_ncu.xlsx")
+
+```
+
+
+

@@ -1,0 +1,720 @@
+---
+title: "Untitled"
+author: "Tie Ma"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+#Note: this file include the processing of downloding the Data from the IMS and cleaning process 
+#wrote by Tie at 2024/05/18
+```
+
+```{R}
+#update history
+################
+#2024/05/24  #0.0.1 create the this marketdown and doing the first round of test data collection. 
+#2024/05/25  #0.0.2 further improve the data cleaning 
+#2024/05/26  #0.0.3 add the code section of create IMF data check list for better understand and cleaning this data.  
+#2024/07/16  #0.0.4 update the code and improve the readability for future reader and myself
+################
+
+```
+
+
+
+```{r setup, include=FALSE}
+#this file is for processing the Raw data from entire OECD data set from 1950 - 2023 
+#as the Raw code processing file for the RA data job for professor Hassmant
+#Tie Ma 2024/05/18
+
+################################################################################
+
+#clean the enviroment
+rm(list = ls())
+
+#set the working direction
+#for mac
+#setwd("/Users/tie/Documents/GitHub/RA-data-clening")
+
+#for windosw
+#setwd("D:/github/RA-data-clening/code")
+
+
+
+################################################################################
+#Step one Lode the all package that necessary. 
+#some of them may not be used this file
+#I just copy them around, so it will make my life easier 
+
+library (lubridate)     #the time series processing package
+library (cansim)        #provides easy access to the statistics canada data tale
+library (WDI)           #Accesses data from the world development indicators
+library (fredr)         #provide an interface to the federal reserve economic data API
+library (tsbox)         #Make time series convverstion, aggregation and plotting simple
+library (RColorBrewer)  #color palettes for R graphics
+library(wesanderson)    #Provides color palettes inspired by Wes Anderson films.
+library(writexl)        #Writes data frames to Excel files.
+library(tidyr)          #Tidies messy data   
+library(xts)            #Extensible time series class for R   
+library(dplyr)          #Data manipulation and transformation.
+library(openxlsx)       #Read, write, and edit Excel files.
+library(IMFData)     #accessing the data from the IMF data 
+
+```
+
+```{R}
+################################################################################
+#this section of the code does no  work
+#imf_databases <- DataStructureMethod("IMF")
+#print(imf_databases)
+################################################################################
+```
+
+```{R}
+#check the available data base ID
+#availableDB <- DataflowMethod()
+#availableDB$DatabaseID
+```
+
+
+```{r}
+
+# Set databaseID and other parameters
+#accessing the data from the IFS
+IFS.available.codes <- DataStructureMethod("IFS")
+
+
+# Available dimension code
+names(IFS.available.codes)
+
+#check the name
+IFS.available.codes[[1]]
+
+#find all the avaiable indicator for the GDP
+Indicator_names <- CodeSearch(IFS.available.codes, "CL_INDICATOR_IFS", "NGDP")
+head(Indicator_names, n = 10)
+
+
+#check the availabel region name
+evil <- IFS.available.codes$CL_AREA_IFS
+print(evil)
+
+#create a new place for the saving the IMF data
+dir.create("D:\\github\\RA-data-clening\\Data\\IFS_data", recursive = TRUE)
+
+# save the IFS coutries check list 
+write.csv(evil, "D:\\github\\RA-data-clening\\Data\\IFS_data\\IFS_country_check_list.csv")
+
+
+
+```
+
+
+```{r}
+
+#so, the idea here is 
+  #access the data for 10 countries each
+  #within each group, random shorter sleep
+  #if wrong, try three times
+  #a big sleep 
+  #keep going 
+
+# set staff down for access the data base
+databaseID <- "IFS"
+startdate <- "1950-01-01"
+enddate <- "2023-12-31"
+checkquery <- FALSE
+
+# list the things we need
+indicators <- c(
+  "NGDP_XDC",      # Gross Domestic Product, Nominal, Domestic Currency
+  "NGDP_R_XDC"     # Gross Domestic Product, Real, Domestic Currency
+)
+
+# 完整的国家代码列表
+# the country list
+country_codes <- c(
+  "AF", "AL", "DZ", "AD", "AO", "AI", "AG", "5M", "AR", "AM", "AW", "AU", "AT", "AZ", "BS", "BH", "BD", "5W",
+  "5B", "BB", "BY", "BE", "R1", "BZ", "BJ", "BM", "BT", "BO", "BA", "BW", "BR", "BN", "BG", "BF", "BI", "CV",
+  "KH", "CM", "CA", "KY", "CF", "1C_752", "TD", "CL", "HK", "MO", "CN", "CO", "KM", "CD", "CG", "CR", "CI",
+  "HR", "CU", "1C_355", "CW", "CY", "CZ", "CSH", "DK", "DJ", "DM", "DO", "5I", "DE2", "EC", "EG", "SV", "GQ",
+  "ER", "EE", "SZ", "ET", "U2", "4F", "FO", "FJ", "FI", "FR", "PF", "GA", "GM", "GE", "DE", "GH", "GI", "GR",
+  "GL", "GD", "GP", "GU", "GT", "GG", "GF", "GN", "GW", "GY", "HT", "HN", "HU", "IS", "IN", "ID", "1E", "X0",
+  "IR", "IQ", "IE", "7B", "IM", "IL", "IT", "JM", "JP", "JE", "JO", "KZ", "KE", "KI", "KR", "XK", "KW", "KG",
+  "LA", "LV", "LB", "LS", "LR", "LY", "LT", "LU", "MG", "MW", "MY", "MV", "ML", "MT", "MH", "MQ", "MR", "MU",
+  "MX", "FM", "MD", "MN", "ME", "MS", "MA", "MZ", "MM", "NA", "NR", "NP", "AN", "NL", "NC", "NZ", "NI", "NE",
+  "NG", "MK", "NO", "OM", "PK", "PW", "PA", "PG", "PY", "PE", "PH", "PL", "PT", "QA", "RE", "RO", "RU", "RW",
+  "PM", "WS", "SM", "ST", "SA", "SN", "RS", "SC", "SL", "SG", "SX", "SK", "SI", "SB", "SO", "ZA", "SS", "ES",
+  "LK", "KN", "LC", "VC", "SD", "SR", "SE", "CH", "SY", "TW", "TJ", "TZ", "TH", "TL", "TG", "TO", "TT", "TN",
+  "TR", "TM", "TC", "TV", "UG", "UA", "AE", "GB", "US", "UY", "SUH", "UZ", "VU", "VE", "VN", "PS", "1C_473",
+  "1C_459", "YE", "YUC", "ZM", "ZW", "XR29", "M49_002", "1C_ALLC", "1C_ALL", "W0", "1C_All_Countries_Published",
+  "1C_ALLG", "M49_019", "M49_142", "5O", "5X", "Countries_Home_Portal_Presentation", "F3", "5Y", "XS25", "XR43",
+  "1C_903", "1C_994", "1C_EMU", "M49_150", "120", "119", "1C_Middle_East_and_Central_Asia", "1C_NANSA", "1C_NASA",
+  "1C_NSC", "M49_009", "1C_970", "1C_SRF_less_EMU", "1C_SRF_plus_EMU", "1C_SRF", "F6", "7A", "WAEMU", "A10",
+  "W00"
+)
+# 对应的国家名称列表
+# the countries list with the full name
+country_names <- c(
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Anguilla", "Antigua and Barbuda", "Arab Monetary Fund", 
+  "Argentina", "Armenia", "Aruba", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", 
+  "Banque des Etats de l'Afrique Centrale", "Bank for International Settlements", "Barbados", "Belarus", "Belgium", 
+  "Belgo-Luxembourg Economic Union", "Belize", "Benin", "Bermuda", "Bhutan", "Bolivia", "Bosnia and Herzegovina", 
+  "Botswana", "Brazil", "Brunei Darussalam", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", 
+  "Cameroon", "Canada", "Cayman Islands", "Central African Republic", "Central Bank West Africa", "Chad", "Chile", 
+  "Hong Kong, China", "Macao", "China", "Colombia", "Comoros", "Congo, the Democratic Republic of the", "Congo", 
+  "Costa Rica", "Cote d'Ivoire", "Croatia", "Cuba", "Curacao & St. Maarten", "Curacao", "Cyprus", "Czech Republic", 
+  "Former Czechoslovakia", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Eastern Caribbean Central Bank", 
+  "East Germany", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", 
+  "Ethiopia", "Euro area", "European Central Bank", "Faroe Islands", "Fiji", "Finland", "France", "French Polynesia", 
+  "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Gibraltar", "Greece", "Greenland", "Grenada", "Guadeloupe", 
+  "Guam", "Guatemala", "Guernsey", "French Guiana", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", 
+  "Hungary", "Iceland", "India", "Indonesia", "International Bank for Reconstruction and Development", 
+  "IMF Member Countries", "Iran", "Iraq", "Ireland", "Islamic Development Bank", "Isle of Man", "Israel", "Italy", 
+  "Jamaica", "Japan", "Jersey", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, Republic of", "Kosovo, Republic of", 
+  "Kuwait", "Kyrgyzstan", "Lao People's Democratic Republic", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", 
+  "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall islands", 
+  "Martinique", "Mauritania", "Mauritius", "Mexico", "Micronesia, Federated States of", "Moldova, Republic of", 
+  "Mongolia", "Montenegro", "Montserrat", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", 
+  "Netherlands Antilles", "Netherlands", "New Caledonia", "New Zealand", "Nicaragua", "Niger", "Nigeria", 
+  "North Macedonia, Republic of", "Norway", "Oman", "Pakistan", "Palau", "Panama", "Papua New Guinea", "Paraguay", 
+  "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Reunion", "Romania", "Russian Federation", "Rwanda", 
+  "Saint Pierre and Miquelon", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", 
+  "Seychelles", "Sierra Leone", "Singapore", "Sint Maarten (Dutch part)", "Slovakia", "Slovenia", "Solomon Islands", 
+  "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Saint Kitts and Nevis", "Saint Lucia", 
+  "Saint Vincent and the Grenadines", "Sudan", "Suriname", "Sweden", "Switzerland", "Syrian Arab Republic", 
+  "Taiwan, Province of China", "Tajikistan", "Tanzania, United Republic of", "Thailand", "Timor-Leste", "Togo", 
+  "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Turks and Caicos Islands", "Tuvalu", 
+  "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Former U.S.S.R.", 
+  "Uzbekistan", "Vanuatu", "Venezuela, Bolivarian Republic", "Viet Nam", "Palestine, State of", "Yemen Arab Rep.", 
+  "Yemen, P.D. Rep.", "Yemen", "Former Yugoslavia", "Zambia", "Zimbabwe", "Advanced Economies", "Africa", 
+  "All Countries", "All Countries and Country Groups", "World", "All Countries Published", "All Country Groups", 
+  "Americas", "Asia", "BCEAO (Banque Centrale des Etats de l'Afrique de l'Ouest)", "CEMAC", 
+  "Countries Home Portal Presentation", "Eastern Africa", "Eastern Caribbean Currency Union", "Developing Asia", 
+  "Emerging and Developing Countries", "Emerging and Developing Europe", "EPU/EF", "EMU", "Europe", "G20", "G7", 
+  "Middle East and Central Asia", "National Accounts (NSA) Countries", "National Accounts (SA) Countries", 
+  "Non SRF countries", "Oceania", "Other Holders", "SRF (excluding EA)", "SRF (including EA)", "SRF Countries", 
+  "Sub-Saharan Africa", "WAEMU (West African Economic and Monetary Union)", "Western Hemisphere", 
+  "All Countries, excluding the IO"
+)
+
+# start with a empty matrix to store the data
+results <- data.frame(
+  TimePeriod = character(),
+  CountryName = character(),
+  stringsAsFactors = FALSE
+)
+
+# in case the download fails, we will retry a few times
+# yes, it will block you if you access too frequence.
+fetch_data <- function(country_code, country_name, indicator) {
+  queryfilter <- list(
+    CL_FREA = "A",  # 年度数据 annual data 
+    CL_AREA_IFS = country_code,  # 当前国家代码 current code 
+    CL_INDICATOR_IFS = indicator  # 当前指标 current indicator 
+  )
+  
+  attempt <- 1 
+  max_attempts <- 3
+  success <- FALSE
+  no_data_available <- FALSE
+  result <- data.frame(TimePeriod = character(), CountryCode = character(), CountryName = character(), Indicator = character(), ObsValue = numeric())
+  
+  while (attempt <= max_attempts && !success && !no_data_available) {
+    tryCatch({
+      data <- CompactDataMethod(databaseID, queryfilter, startdate, enddate, checkquery)
+      
+      if (length(data$Obs) > 0) {
+        observations <- data$Obs[[1]]
+        if (nrow(observations) > 0) {
+          result <- data.frame(
+            TimePeriod = observations$`@TIME_PERIOD`,
+            CountryCode = country_code,
+            CountryName = country_name,
+            Indicator = indicator,
+            ObsValue = as.numeric(observations$`@OBS_VALUE`)
+          )
+          success <- TRUE
+        }
+      } else {
+        no_data_available <- TRUE
+      }
+    }, error = function(e) {
+      if (grepl("No data available", e$message)) {
+        no_data_available <- TRUE
+        message(paste("No data available for", country_code, indicator, ":", e$message))
+      } else {
+        message(paste("Error fetching data for", country_code, indicator, "on attempt", attempt, ":", e$message))
+        attempt <- attempt + 1
+        if (attempt <= max_attempts) {
+          retry_sleep_time <- runif(1, min = 2, max = 5)
+          cat("Retrying in", retry_sleep_time, "seconds...\n")
+          Sys.sleep(retry_sleep_time)
+        } else {
+          message(paste("Failed to fetch data for", country_code, indicator, "after", max_attempts, "attempts. Marking as error."))
+        }
+      }
+    })
+  }
+  
+  return(result)
+}
+
+# 分批下载数据
+batch_size <- 10
+total_countries <- length(country_codes)
+
+for (batch_start in seq(1, total_countries, by = batch_size)) {
+  batch_end <- min(batch_start + batch_size - 1, total_countries)
+  cat("Processing countries from", batch_start, "to", batch_end, "\n")
+  
+  for (i in batch_start:batch_end) {
+    country_code <- country_codes[i]
+    country_name <- country_names[i]
+    random_sleep_time <- runif(1, min = 0.1, max = 2.0)
+    cat("Sleeping for", random_sleep_time, "seconds...\n")
+    
+    for (indicator in indicators) {
+      result <- fetch_data(country_code, country_name, indicator)
+      results <- rbind(results, result)
+      Sys.sleep(random_sleep_time)
+    }
+  }
+  
+  # 在每批之间添加较长的随机睡眠时间
+  # add random sleep time...
+  random_batch_sleep_time <- runif(1, min = 3.0, max = 5.0)
+  cat("Batch completed. Sleeping for", random_batch_sleep_time, "seconds before starting the next batch...\n")
+  Sys.sleep(random_batch_sleep_time)
+}
+
+
+```
+
+
+```{r}
+
+#save it! 
+# 将结果数据透视到每个指标一个列
+raw_data <- results %>%
+  pivot_wider(names_from = Indicator, values_from = ObsValue)
+
+#check the result!
+# 查看结果
+print(raw_data)
+
+```
+
+```{r}
+#raw_data <- results_pivot
+#this code is to save in the windows
+#write.csv(results_pivot, "D:\\github\\RA-data-clening\\Data\\IFS_data\\IFS_raw_data.csv")
+
+#this line of code is for the mac
+write.csv(raw_data, "/Users/tie/Documents/GitHub/RA-data-clening/Data/IFS_data/IFS_raw_data_time_cycle.csv")
+
+#check the total number of countries
+#198
+n_distinct(raw_data$CountryName)
+
+
+```
+
+
+```{r}
+#check the data
+#unique_values <- raw_data %>% 
+  #summarise_all(~ list(unique(.)))
+`
+```
+
+
+```{r}
+#rename the code so I can use the old code again.
+  #(no, I cannot. I have to rewrite the code)
+  #(each government organization have their own way to name countries)
+  #yes, its hurt me so badly
+
+
+#check the name of the name so i can recycle my code here 
+raw_data<- raw_data %>% 
+  rename(
+  nominal_GDP = NGDP_XDC,
+  real_GDP = NGDP_R_XDC,
+  REF_AREA = CountryName,
+  TIME_PERIOD = TimePeriod)
+
+
+#double check the number of countries 
+n_distinct(raw_data$REF_AREA)
+#still got the 198 countries
+
+#check the data
+head(raw_data, n = 10)
+#the data seem correct.
+
+#the following code is to select the col from the orignal data.
+#Selection the data from the raw data
+#selection_data <- select(results_pivot, TIME_PERIOD, REF_AREA, nominal_GDP, real_GDP)
+
+```
+
+
+```{R}
+
+#check the structure of the number of the data
+str(raw_data$real_GDP)
+#ok its the the number so the following code has been commented out
+
+# Convert observations from character to numeric
+#selection_data$ObsValue <- as.numeric(selection_data$ObsValue)
+#its already the the num
+
+#change the name to make my life easier 
+selection_data <- raw_data
+
+#now, its the time to deal with the date
+# Ensure TIME_PERIOD is numeric in the selection_data
+selection_data$TIME_PERIOD <- as.numeric(selection_data$TIME_PERIOD)
+
+# Define a complete range of years and countries
+all_countries <- unique(selection_data$REF_AREA)
+
+#create the sequence for from the smallest year to the largest year
+all_years <- seq(min(selection_data$TIME_PERIOD, na.rm = TRUE), max(selection_data$TIME_PERIOD, na.rm = TRUE), by = 1)
+
+#check the country list and year list 
+n_distinct(all_countries)
+#ok, still 198 countries 
+print(all_years)
+#ok, its from the 1950 to the 2023!
+
+
+# Create a full grid of TIME_PERIOD, REF_AREA, MEASURE, and UNIT_MEASURE
+# Assuming all_years and all_countries are defined and unique
+#all_years <- c(2021, 2022)  # Example values
+#all_countries <- c("USA", "CAN")  # Example values
+
+ #Create full gridfull_grid <- 
+  # expand.grid(TIME_PERIOD = all_years, 
+               #REF_AREA = all_countries,  
+               #nominal_GDP = unique(selection_data$nominal_GDP) 
+               #real_GDP = unique(selection_data$real_GDP) )
+```
+
+
+```{r}
+#put the time and refrenece together
+full_grid <- expand.grid(
+  TIME_PERIOD = all_years,
+  REF_AREA = all_countries
+)
+
+#check the data
+#n_distinct(full_grid$REF_AREA)
+#countries number 198
+#print(min(full_grid$TIME_PERIOD, na.rm = TRUE))
+#print(max(full_grid$TIME_PERIOD, na.rm = TRUE))
+#print(unique(full_grid$TIME_PERIOD))
+
+#The data is good and as its should be! 
+```
+
+
+
+```{r}
+# put all the data togehter
+full_data <- full_grid %>%
+  left_join(selection_data, by = c("TIME_PERIOD", "REF_AREA"))
+
+######
+#code check
+#n_distinct(full_data$REF_AREA) #198 coountires
+#n_distinct(full_data$TIME_PERIOD) #1950 - 2023
+#unique(full_data$TIME_PERIOD) #1950 - 2023
+# the code is working as i expected
+
+#######
+# Print the resulting data frame to verify the join
+#print(selection_data)
+
+#pivot_wide the data 
+#wide_data <- selection_data %>%
+  #pivot_wider(
+    #names_from = c(PRICE_BASE),
+    #values_from = ObsValue,
+    #names_sep = "_"
+  #)
+```
+
+
+
+```{r}
+#check the entire year check list 
+years_count_total <- selection_data %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD))
+
+#check the number of countries
+n_distinct(years_count_total$REF_AREA)
+
+#check the the number of countries have at least one nominal_GDP
+years_count_nominal_GDP <- selection_data %>%
+  filter(!is.na(nominal_GDP)) %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD))
+
+#check the number of countries
+n_distinct(years_count_nominal_GDP$REF_AREA)
+#198
+
+#check the the number of countries have at least one real_GDP
+years_count_real_GDP <- selection_data %>%
+  filter(is.na(real_GDP))  %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD))
+n_distinct(years_count_real_GDP$REF_AREA)
+#185
+#which countries have 0 in the real GDP 
+
+
+# Count the number of years for each country with non-NA values for both L and LR
+years_count <- selection_data %>%
+  filter(!is.na(nominal_GDP) & !is.na(real_GDP)) %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD))
+
+
+
+n_distinct(years_count$REF_AREA)
+
+#only 185 countries have both
+
+```
+
+
+
+```{r}
+# Filter countries with at least 25 years of data
+#country that be keep
+countries_to_keep <- years_count %>%
+  filter(years_of_data >= 25) %>%
+  pull(REF_AREA)
+  
+#check how many countries to keep
+n_distinct(countries_to_keep)
+#only to keep 104 countries
+```
+
+
+
+```{r}
+#country that be delete
+countries_to_delete <- years_count %>%
+  filter(years_of_data < 25) %>%
+  pull(REF_AREA)
+  
+n_distinct(countries_to_delete)
+#81 countries need to be delete
+```
+
+
+```{r}
+# Filter the original test_data to keep only the selected countries
+filtered_data <- selection_data  %>%
+  filter(REF_AREA %in% countries_to_keep)
+
+complete_filtered_data <- filtered_data %>%
+  group_by(REF_AREA) %>%
+  complete(TIME_PERIOD = 1950:2023) %>%
+  ungroup()
+
+
+
+```
+
+```{r}
+# Check if every country has data for the entire time period from 1950 to 2023
+coverage_check <- complete_filtered_data %>%
+  group_by(REF_AREA) %>%
+  summarize(complete_years = all(1950:2023 %in% TIME_PERIOD), .groups = 'drop')
+```
+
+```{r}
+# Print the coverage check
+print(coverage_check, n = 100)
+```
+
+
+```{r}
+
+# the price livel 
+# Calculate Price Levels (P_t)
+complete_filtered_data <- complete_filtered_data %>%
+  group_by(REF_AREA) %>%
+  mutate(Price_Level = nominal_GDP / real_GDP)
+
+# Calculate Inflation Rates (π_t)
+complete_filtered_data <- complete_filtered_data %>%
+  arrange(REF_AREA, TIME_PERIOD) %>%
+  mutate(Inflation_Rate = ((Price_Level - lag(Price_Level))/ lag(Price_Level))* 100)
+
+# Print the resulting data frame
+print(complete_filtered_data, n = 100)
+
+#god its finally down, its time to save
+
+write_xlsx(complete_filtered_data, "/Users/tie/Documents/GitHub/RA-data-clening/Data/IFS_cleaned_data.xlsx")
+```
+
+
+```{r}
+#its the time to create check flie 
+#extract the data duration for each country
+
+data_duration <- raw_data %>%
+  group_by(REF_AREA) %>%
+  summarize(
+    start_year = min(TIME_PERIOD, na.rm = TRUE),
+    end_year = max(TIME_PERIOD, na.rm = TRUE)
+  ) %>%
+  mutate(data_duration = paste(start_year, "-", end_year))
+
+```
+
+
+```{r}
+
+#find the country that have at least 25 year olf 
+# 计算每个国家的年份数据并生成标识
+years_count <- raw_data %>%
+  filter(!is.na(nominal_GDP) & !is.na(real_GDP)) %>%
+  group_by(REF_AREA) %>%
+  summarize(years_of_data = n_distinct(TIME_PERIOD)) %>%
+  ungroup()  # 解除分组
+
+# 创建包含所有国家的完整列表
+complete_country_list <- data.frame(REF_AREA = unique(raw_data$REF_AREA))
+
+# 使用 left_join 保留所有国家，并将缺失年份数据设置为0
+years_count_complete <- complete_country_list %>%
+  left_join(years_count, by = "REF_AREA") %>%
+  mutate(
+    years_of_data = ifelse(is.na(years_of_data), 0, years_of_data),
+    has_25_years = ifelse(years_of_data >= 25, "1", "0")
+  )
+
+print(n_distinct(years_count_complete$REF_AREA))  # 应该输出198
+print(years_count_complete)
+```
+
+
+```{r}
+
+#market the country that have in the final data set 
+included_in_filtered <- complete_filtered_data %>%
+  distinct(REF_AREA) %>%
+  mutate(in_filtered_data = 1)
+
+```
+
+
+```{r}
+# 1. 创建包含所有国家的完整列表，并与 years_count 合并
+years_count_complete <- data.frame(REF_AREA = unique(raw_data$REF_AREA)) %>%
+  left_join(years_count, by = "REF_AREA") %>%
+  mutate(
+    years_of_data = ifelse(is.na(years_of_data), 0, years_of_data),
+    has_25_years = ifelse(years_of_data >= 25, "1", "0")
+  )
+
+# 2. 将 data_duration、years_count_complete 和 included_in_filtered 数据框进行合并
+final_summary <- data_duration %>%
+  left_join(years_count_complete, by = "REF_AREA") %>%
+  left_join(included_in_filtered, by = "REF_AREA") %>%
+  mutate(in_filtered_data = ifelse(is.na(in_filtered_data), 0, in_filtered_data))
+
+# 打印结果以检查
+print(final_summary)
+```
+
+
+
+```{r}
+
+# 选择并排列所需的列
+final_summary <- final_summary %>%
+  select(
+    country_code = REF_AREA,
+    data_duration,
+    has_25_years,
+    in_filtered_data
+  )
+
+# its time for check
+print(final_summary)
+
+```
+
+
+```{r}
+#change the time 
+#new name = the old name
+final_summary <- final_summary %>%
+  select(
+    country_name = country_code,
+    data_duration,
+    has_25_years,
+    In_IFS_dataset = in_filtered_data
+  )
+
+
+print(final_summary)
+write.xlsx(final_summary, "/Users/tie/Documents/GitHub/RA-data-clening/Data/IFS_data/IFS_final_summary.xlsx")
+
+```
+
+
+```{r}
+library(readxl)
+the_OECD_ultra_check_list <- read_excel("~/Library/CloudStorage/OneDrive-CarletonUniversity/The GDP data cleaning-TIEMA/the OECD ultra check list.xlsx", 
+    col_types = c("text", "skip", "skip", 
+        "numeric"))
+
+print(the_OECD_ultra_check_list)
+
+#put everything together
+IFS_final_ultra_check_list <- final_summary %>%
+  left_join(the_OECD_ultra_check_list$, by = "country_name")
+
+head(IFS_final_ultra_check_list)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
